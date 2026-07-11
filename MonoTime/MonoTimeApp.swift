@@ -9,9 +9,18 @@ import SwiftUI
 
 @main
 struct MonoTimeApp: App {
+    /// Shared timer model that lives for the app's lifetime.
+    @State private var timer = PomodoroTimer()
+
     var body: some Scene {
-        WindowGroup {
-            ContentView()
+        MenuBarExtra {
+            MenuBarView(timer: timer)
+        } label: {
+            // Live label shown in the menu bar: phase icon + remaining time.
+            Image(systemName: timer.phase.symbolName)
+            Text(timer.formattedTime)
         }
+        // `.window` gives us a rich SwiftUI popover instead of a plain menu.
+        .menuBarExtraStyle(.window)
     }
 }
