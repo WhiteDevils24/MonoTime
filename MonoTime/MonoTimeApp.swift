@@ -7,6 +7,11 @@
 
 import SwiftUI
 
+/// The app entry point: a menu bar-only Pomodoro timer.
+///
+/// MonoTime has no dock icon or main window — just a menu bar item whose
+/// label shows the remaining time, a popover with the timer controls
+/// (``MenuBarView``), and a standard settings window (``SettingsView``).
 @main
 struct MonoTimeApp: App {
     /// Shared timer model that lives for the app's lifetime.
@@ -20,6 +25,11 @@ struct MonoTimeApp: App {
         }
         // `.window` gives us a rich SwiftUI popover instead of a plain menu.
         .menuBarExtraStyle(.window)
+
+        // Separate settings window, opened from the popover's gear button.
+        Settings {
+            SettingsView(timer: timer)
+        }
     }
 }
 
@@ -29,20 +39,31 @@ struct MonoTimeApp: App {
 /// Rendered to an `NSImage` because the menu bar strips colors from plain
 /// SwiftUI labels. Idle and running states are template images (they adapt
 /// to the menu bar's light/dark appearance); the paused state keeps its own
-/// amber color and flashes.
+/// amber color.
 private struct MenuBarLabel: View {
+    /// The shared timer model providing the time and state to display.
     var timer: PomodoroTimer
-
-    /// Paused flash color: yellow pushed a little toward orange.
-    private static let pausedColor = Color(red: 1.0, green: 0.72, blue: 0.15)
 
     /// Fixed label size so the menu bar item width stays constant.
     private static let labelSize = CGSize(width: 46, height: 18)
 
     var body: some View {
         Image(nsImage: renderedLabel())
+            .accessibilityLabel(accessibilityDescription)
     }
 
+    /// VoiceOver description of the menu bar item, e.g.
+    /// "MonoTime, 24:59 remaining, running".
+    private var accessibilityDescription: String {
+        let state = timer.isRunning ? "running" : (timer.hasStarted ? "paused" : "not started")
+        return "MonoTime, \(timer.formattedTime) remaining, \(state)"
+    }
+
+    /// Renders the label content into a retina `NSImage`.
+    ///
+    /// - Returns: A template image for the idle and running states (so the
+    ///   system tints it to match the menu bar), or a colored image while
+    ///   paused to preserve the yellow.
     private func renderedLabel() -> NSImage {
         let isPaused = timer.hasStarted && !timer.isRunning
 
@@ -55,27 +76,32 @@ private struct MenuBarLabel: View {
         return image
     }
 
+    /// The SwiftUI content captured into the label image: a filled pill
+    /// with knocked-out digits in high contrast, or plain text otherwise.
+    ///
+    /// - Parameter isPaused: Whether the timer is started but not running,
+    ///   which switches the color to the shared paused yellow.
     @ViewBuilder
     private func labelContent(isPaused: Bool) -> some View {
         ZStack {
-            if timer.hasStarted {
+            if timer.hasStarted && timer.menuBarContrast == .high {
                 // Filled pill with the time knocked out (inverted).
                 RoundedRectangle(cornerRadius: 4)
-                    .fill(isPaused ? Self.pausedColor : Color.black)
-                    .opacity(isPaused && !timer.blinkOn ? 0.35 : 1)
+                    .fill(isPaused ? Color.paused : Color.black)
 
                 timeText
                     .blendMode(.destinationOut)
             } else {
-                // Not started yet: plain text on a blank background.
+                // Plain text: idle state, or low contrast while started.
                 timeText
-                    .foregroundStyle(.black)
+                    .foregroundStyle(isPaused ? Color.paused : Color.black)
             }
         }
         .compositingGroup()
         .frame(width: Self.labelSize.width, height: Self.labelSize.height)
     }
 
+    /// The remaining time in a small, fixed-width (monospaced digit) font.
     private var timeText: some View {
         Text(timer.formattedTime)
             .font(.system(size: 12, weight: .medium))
